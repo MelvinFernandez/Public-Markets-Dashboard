@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { spawn } from "node:child_process";
 import { LruCache, devFileCache } from "@/lib/cache";

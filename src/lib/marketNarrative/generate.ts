@@ -1,7 +1,6 @@
 import yahooFinance from 'yahoo-finance2';
 import { 
   percent, 
-  label,
   sectorNameFromETF, 
   calculateSectorBreadth, 
   NewsItem,
