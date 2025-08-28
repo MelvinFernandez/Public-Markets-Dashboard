@@ -1,8 +1,21 @@
 import { NextResponse } from "next/server";
+import { spawn } from "node:child_process";
 import { LruCache } from "@/lib/cache";
 
 const TEN_MINUTES = 10 * 60 * 1000;
 const sentimentCache = new LruCache<unknown>(64);
+
+async function trySpawn(cmd: string, args: string[], cwd: string) {
+  return await new Promise<{ ok: boolean; out: string; err: string; code: number }>((resolve) => {
+    const p = spawn(cmd, args, { cwd });
+    let out = "";
+    let err = "";
+    p.stdout.on("data", (d: any) => (out += d.toString()));
+    p.stderr.on("data", (d: any) => (err += d.toString()));
+    p.on("close", (code: any) => resolve({ ok: code === 0, out, err, code: code ?? -1 }));
+    p.on("error", (e: any) => resolve({ ok: false, out: "", err: String(e), code: -1 }));
+  });
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -25,63 +38,70 @@ export async function GET(request: Request) {
   }
 
   try {
-    if (tickers) {
-      // Portfolio sentiment analysis
-      const tickerList = tickers.split(',');
+    const cwd = process.cwd();
+    const candidates: Array<{ cmd: string; extraArgs: string[] }> = (
+      [
+        process.env.PYTHON_PATH ? { cmd: process.env.PYTHON_PATH, extraArgs: [] } : undefined,
+        process.platform === 'win32' ? { cmd: 'py', extraArgs: ['-3'] } : undefined,
+        process.platform === 'win32' ? { cmd: 'py', extraArgs: [] } : undefined,
+        { cmd: 'python3', extraArgs: [] },
+        { cmd: 'python', extraArgs: [] },
+      ].filter(Boolean) as Array<{ cmd: string; extraArgs: string[] }>
+    );
+
+    let lastErr = "";
+    for (const c of candidates) {
+      const args = tickers 
+        ? [...c.extraArgs, "scripts/sentiment_analysis.py", "--multi", tickers, String(limit)]
+        : [...c.extraArgs, "scripts/sentiment_analysis.py", ticker!, String(limit)];
       
-      const result = {
+      const run = await trySpawn(c.cmd, args, cwd);
+      if (run.ok) {
+        try {
+          const result = JSON.parse(run.out);
+          sentimentCache.set(cacheKey, result, TEN_MINUTES);
+          return NextResponse.json(result);
+        } catch {
+          lastErr = `Invalid JSON from sentiment analysis (${c.cmd}). stdout: ${run.out?.slice(0, 2000)}`;
+          break;
+        }
+      }
+      lastErr = `${c.cmd} failed (code ${run.code}). stderr: ${run.err?.slice(0, 2000)}`;
+    }
+
+    // Return fallback data on error
+    if (tickers) {
+      const tickerList = tickers.split(',');
+      return NextResponse.json({
         tickers: tickerList,
-        combined_score: 65.0,
-        combined_breadth: 70.0,
-        total_articles: 15,
+        combined_score: 50.0,
+        combined_breadth: 50.0,
+        total_articles: 0,
         asOf: new Date().toISOString(),
         individual_scores: tickerList.map(t => ({
           ticker: t,
-          score: 60 + Math.random() * 20,
-          breadth: 65 + Math.random() * 20,
-          count: 3 + Math.floor(Math.random() * 5),
-          publishers: 2 + Math.floor(Math.random() * 3),
-          lowSample: false
+          score: 50.0,
+          breadth: 50.0,
+          count: 0,
+          publishers: 0,
+          lowSample: true
         })),
-        articles: []
-      };
-
-      sentimentCache.set(cacheKey, result, TEN_MINUTES);
-      return NextResponse.json(result);
-      
+        articles: [],
+        error: lastErr || "Sentiment analysis temporarily unavailable"
+      });
     } else {
-      // Individual ticker sentiment analysis
-      const result = {
+      return NextResponse.json({
         ticker: ticker!,
-        score: 65.0,
-        breadth: 70.0,
-        count: 15,
-        publishers: 5,
-        lowSample: false,
+        score: 50.0,
+        breadth: 50.0,
+        count: 0,
+        publishers: 0,
+        lowSample: true,
         asOf: new Date().toISOString(),
-        articles: [
-          {
-            title: "Tech stocks surge on strong earnings reports",
-            publisher: "Financial Times",
-            time: Math.floor(Date.now() / 1000),
-            compound: 0.3,
-            score: 75,
-            url: "https://example.com/news/1"
-          },
-          {
-            title: "Federal Reserve signals potential rate cuts",
-            publisher: "Reuters",
-            time: Math.floor(Date.now() / 1000) - 3600,
-            compound: 0.2,
-            score: 70,
-            url: "https://example.com/news/2"
-          }
-        ],
-        articles_full: []
-      };
-
-      sentimentCache.set(cacheKey, result, TEN_MINUTES);
-      return NextResponse.json(result);
+        articles: [],
+        articles_full: [],
+        error: lastErr || "Sentiment analysis temporarily unavailable"
+      });
     }
     
   } catch (error) {

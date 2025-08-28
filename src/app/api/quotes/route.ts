@@ -1,61 +1,59 @@
 import { NextResponse } from "next/server";
+import { spawn } from "node:child_process";
 import { z } from "zod";
-import yahooFinance from "yahoo-finance2";
 
-const QuerySchema = z.object({ symbols: z.string().transform((s) => s.split(",").filter(Boolean)) });
+const QuerySchema = z.object({
+  symbols: z.string().transform((s) => s.split(",").map((s) => s.trim().toUpperCase())),
+});
+
+async function trySpawn(cmd: string, args: string[], cwd: string) {
+  return await new Promise<{ ok: boolean; out: string; err: string; code: number }>((resolve) => {
+    const p = spawn(cmd, args, { cwd });
+    let out = "";
+    let err = "";
+    p.stdout.on("data", (d: any) => (out += d.toString()));
+    p.stderr.on("data", (d: any) => (err += d.toString()));
+    p.on("close", (code: any) => resolve({ ok: code === 0, out, err, code: code ?? -1 }));
+    p.on("error", (e: any) => resolve({ ok: false, out: "", err: String(e), code: -1 }));
+  });
+}
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const parsed = QuerySchema.safeParse({ symbols: url.searchParams.get("symbols") ?? "" });
-  if (!parsed.success) return NextResponse.json({ error: "Invalid query" }, { status: 400 });
+  const { symbols } = QuerySchema.parse(Object.fromEntries(url.searchParams));
 
-  const symbols = parsed.data.symbols;
-  if (!symbols.length) return NextResponse.json({ data: [], updatedAt: Date.now() });
-
-  try {
-    console.log(`Fetching quotes for symbols: ${symbols.join(', ')}`);
-    
-    // Fetch quotes for all symbols in parallel
-    const quotePromises = symbols.map(async (symbol) => {
-      try {
-        const quote = await yahooFinance.quote(symbol);
-        return {
-          symbol: symbol.toUpperCase(),
-          price: quote.regularMarketPrice || 0,
-          change: quote.regularMarketChange || 0,
-          changePercent: quote.regularMarketChangePercent || 0,
-          volume: quote.regularMarketVolume || 0,
-          marketCap: quote.marketCap || 0,
-          pe: quote.trailingPE || 0,
-          updatedAt: Date.now(),
-        };
-      } catch (error) {
-        console.error(`Failed to fetch quote for ${symbol}:`, error);
-        return {
-          symbol: symbol.toUpperCase(),
-          price: 0,
-          change: 0,
-          changePercent: 0,
-          volume: 0,
-          marketCap: 0,
-          pe: 0,
-          updatedAt: Date.now(),
-          error: `Failed to fetch data for ${symbol}`,
-        };
-      }
-    });
-
-    const quotes = await Promise.all(quotePromises);
-    const data = quotes.filter(quote => !quote.error); // Filter out failed quotes
-    
-    return NextResponse.json({ data, updatedAt: Date.now() });
-    
-  } catch (error) {
-    console.error("Quotes API error:", error);
-    return NextResponse.json({ 
-      error: `Failed to fetch quotes: ${error instanceof Error ? error.message : 'Unknown error'}` 
-    }, { status: 500 });
+  if (!symbols.length) {
+    return NextResponse.json({ error: "symbols required" }, { status: 400 });
   }
+
+  const cwd = process.cwd();
+  const candidates: Array<{ cmd: string; extraArgs: string[] }> = (
+    [
+      process.env.PYTHON_PATH ? { cmd: process.env.PYTHON_PATH, extraArgs: [] } : undefined,
+      process.platform === 'win32' ? { cmd: 'py', extraArgs: ['-3'] } : undefined,
+      process.platform === 'win32' ? { cmd: 'py', extraArgs: [] } : undefined,
+      { cmd: 'python3', extraArgs: [] },
+      { cmd: 'python', extraArgs: [] },
+    ].filter(Boolean) as Array<{ cmd: string; extraArgs: string[] }>
+  );
+
+  let lastErr = "";
+  for (const c of candidates) {
+    const run = await trySpawn(c.cmd, [...c.extraArgs, "scripts/yfinance_quotes.py", ...symbols], cwd);
+    if (run.ok) {
+      try {
+        const arr = JSON.parse(run.out);
+        const data = Array.isArray(arr) ? arr : [];
+        return NextResponse.json({ data, updatedAt: Date.now() });
+      } catch {
+        lastErr = `Invalid JSON from yfinance quotes (${c.cmd}). stdout: ${run.out?.slice(0, 2000)}`;
+        break;
+      }
+    }
+    lastErr = `${c.cmd} failed (code ${run.code}). stderr: ${run.err?.slice(0, 2000)}`;
+  }
+
+  return NextResponse.json({ error: lastErr || "Failed to execute yfinance" }, { status: 500 });
 }
 
 

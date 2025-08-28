@@ -1,49 +1,49 @@
 import { NextResponse } from "next/server";
-import yahooFinance from "yahoo-finance2";
+import { spawn } from "node:child_process";
 
 const SECTORS = ["XLK", "XLF", "XLY", "XLE", "XLV", "XLI", "XLU", "XLB", "XLRE", "XLC"];
 
-export async function GET() {
-  try {
-    console.log("Fetching sector ETF prices...");
-    
-    // Fetch current prices for all sector ETFs
-    const sectorPromises = SECTORS.map(async (symbol) => {
-      try {
-        const quote = await yahooFinance.quote(symbol);
-        return {
-          symbol,
-          date: new Date().toISOString().slice(0, 10),
-          close: quote.regularMarketPrice || 0,
-          change: quote.regularMarketChange || 0,
-          changePercent: quote.regularMarketChangePercent || 0,
-          volume: quote.regularMarketVolume || 0
-        };
-      } catch (error) {
-        console.error(`Failed to fetch ${symbol}:`, error);
-        return {
-          symbol,
-          date: new Date().toISOString().slice(0, 10),
-          close: 0,
-          change: 0,
-          changePercent: 0,
-          volume: 0,
-          error: `Failed to fetch ${symbol}`
-        };
-      }
-    });
+async function trySpawn(cmd: string, args: string[], cwd: string) {
+  return await new Promise<{ ok: boolean; out: string; err: string; code: number }>((resolve) => {
+    const p = spawn(cmd, args, { cwd });
+    let out = "";
+    let err = "";
+    p.stdout.on("data", (d: any) => (out += d.toString()));
+    p.stderr.on("data", (d: any) => (err += d.toString()));
+    p.on("close", (code: any) => resolve({ ok: code === 0, out, err, code: code ?? -1 }));
+    p.on("error", (e: any) => resolve({ ok: false, out: "", err: String(e), code: -1 }));
+  });
+}
 
-    const sectorData = await Promise.all(sectorPromises);
-    const validData = sectorData.filter(item => !item.error);
-    
-    return NextResponse.json({ data: validData, updatedAt: Date.now() });
-    
-  } catch (error) {
-    console.error("Sectors API error:", error);
-    return NextResponse.json({ 
-      error: `Failed to fetch sector data: ${error instanceof Error ? error.message : 'Unknown error'}` 
-    }, { status: 500 });
+export async function GET() {
+  const cwd = process.cwd();
+  const candidates: Array<{ cmd: string; extraArgs: string[] }> = (
+    [
+      process.env.PYTHON_PATH ? { cmd: process.env.PYTHON_PATH, extraArgs: [] } : undefined,
+      process.platform === 'win32' ? { cmd: 'py', extraArgs: ['-3'] } : undefined,
+      process.platform === 'win32' ? { cmd: 'py', extraArgs: [] } : undefined,
+      { cmd: 'python3', extraArgs: [] },
+      { cmd: 'python', extraArgs: [] },
+    ].filter(Boolean) as Array<{ cmd: string; extraArgs: string[] }>
+  );
+
+  let lastErr = "";
+  for (const c of candidates) {
+    const run = await trySpawn(c.cmd, [...c.extraArgs, "scripts/yfinance_quotes.py", ...SECTORS], cwd);
+    if (run.ok) {
+      try {
+        const arr = JSON.parse(run.out);
+        const data = Array.isArray(arr) ? arr : [];
+        return NextResponse.json({ data, updatedAt: Date.now() });
+      } catch {
+        lastErr = `Invalid JSON from yfinance sectors (${c.cmd}). stdout: ${run.out?.slice(0, 2000)}`;
+        break;
+      }
+    }
+    lastErr = `${c.cmd} failed (code ${run.code}). stderr: ${run.err?.slice(0, 2000)}`;
   }
+
+  return NextResponse.json({ error: lastErr || "Failed to execute yfinance" }, { status: 500 });
 }
 
 

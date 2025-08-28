@@ -25,6 +25,14 @@ interface SentimentData {
     score: number;
     url: string;
   }>;
+  articles_full?: Array<{
+    title: string;
+    publisher: string;
+    time: number;
+    compound: number;
+    score: number;
+    url: string;
+  }>;
   error?: string;
   warning?: string;
 }
@@ -44,6 +52,15 @@ interface PortfolioSentimentData {
     lowSample: boolean;
   }>;
   articles: Array<{
+    title: string;
+    publisher: string;
+    time: number;
+    compound: number;
+    score: number;
+    url: string;
+    source_ticker: string;
+  }>;
+  articles_full?: Array<{
     title: string;
     publisher: string;
     time: number;
@@ -233,8 +250,8 @@ export function SentimentCard({ ticker, watchlist = [], className = "" }: Sentim
   const currentPublishers = viewMode === 'portfolio' && portfolioData && portfolioData.individual_scores ?
     Math.max(...portfolioData.individual_scores.map(s => s.publishers)) : (data?.publishers ?? 0);
 
-  // Use articles if available
-  const articlesToShow = currentData?.articles || [];
+  // Use articles_full if available, otherwise fall back to articles
+  const articlesToShow = currentData?.articles_full || currentData?.articles || [];
 
   return (
     <div className={`p-4 ${className}`}>
@@ -376,20 +393,31 @@ export function SentimentCard({ ticker, watchlist = [], className = "" }: Sentim
       {/* Articles - Only show in individual view */}
       {viewMode === 'individual' && articlesToShow && articlesToShow.length > 0 ? (
         <div className="space-y-2">
-          <div className="text-xs text-white/60 mb-2">Recent Headlines</div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs text-white/60">Recent Headlines</div>
+            <div className="text-xs text-white/40">
+              {showAllArticles ? articlesToShow.length : Math.min(4, articlesToShow.length)} of {articlesToShow.length}
+            </div>
+          </div>
 
           {/* Articles list with expand/collapse */}
           <div className="space-y-2">
             {articlesToShow.slice(0, showAllArticles ? articlesToShow.length : 4).map((article, index) => {
               const badge = getSentimentBadge(article.compound);
+              const isExpanded = showAllArticles && index >= 4;
               return (
                 <div
                   key={`${article.time}-${index}`}
-                  className="group cursor-pointer transition-all duration-200 ease-in-out"
+                  className={`group cursor-pointer transition-all duration-300 ease-in-out ${
+                    isExpanded ? 'animate-slideInUp' : ''
+                  }`}
                   onClick={() => window.open(article.url, '_blank')}
                   style={{
-                    animationDelay: showAllArticles ? `${index * 50}ms` : `${index * 100}ms`,
-                    animation: showAllArticles ? 'slideInUp 0.3s ease-out forwards' : 'none'
+                    animationDelay: isExpanded ? `${(index - 4) * 100}ms` : '0ms',
+                    opacity: isExpanded ? 0 : 1,
+                    animation: isExpanded ? 'slideInUp 0.4s ease-out forwards' : 'none',
+                    transform: isExpanded ? 'translateY(10px)' : 'translateY(0)',
+                    transition: 'opacity 0.3s ease-in-out, transform 0.3s ease-in-out'
                   }}
                 >
                   <div className="flex items-start gap-2 p-2 rounded-md hover:bg-white/5 transition-colors">
@@ -415,14 +443,14 @@ export function SentimentCard({ ticker, watchlist = [], className = "" }: Sentim
             <div className="pt-2 border-t border-white/10 mt-3">
               <button
                 onClick={() => setShowAllArticles(!showAllArticles)}
-                className="w-full text-center text-xs text-green-400 hover:text-green-300 transition-colors py-2 flex items-center justify-center gap-2"
+                className="w-full text-center text-xs text-green-400 hover:text-green-300 transition-all duration-300 py-2 flex items-center justify-center gap-2 hover:bg-white/5 rounded-md"
               >
                 <span
-                  className={`transform transition-transform duration-200 ${showAllArticles ? 'rotate-180' : 'rotate-0'}`}
+                  className={`transform transition-transform duration-300 ${showAllArticles ? 'rotate-180' : 'rotate-0'}`}
                 >
                   ▼
                 </span>
-                {showAllArticles ? 'Show Less' : `Show All ${articlesToShow.length} Articles`}
+                {showAllArticles ? 'Show Less' : `See ${articlesToShow.length - 4} More Articles`}
               </button>
             </div>
           )}

@@ -78,7 +78,7 @@ export function WatchlistTable({ symbols, onChange }: WatchlistTableProps) {
             <div className="flex items-center gap-3">
               <span className="font-medium text-white">{quote.symbol}</span>
               {companyNames[quote.symbol] && (
-                <span className="text-xs text-white/60">EST {companyNames[quote.symbol]}</span>
+                <span className="text-xs text-white/60">{companyNames[quote.symbol]}</span>
               )}
               <span className="text-sm text-white/70">${quote.price?.toFixed(2) ?? "0.00"}</span>
             </div>

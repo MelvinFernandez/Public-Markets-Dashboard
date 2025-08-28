@@ -16,21 +16,29 @@ export function PoliticalPulse() {
     queryFn: async () => {
       const [pulseData, geopoliticsData] = await Promise.all([
         json<{ items: PulseItem[]; asOf: string }>("/api/political-pulse"),
-        json<PulseItem>("/api/geopolitics").catch(() => null)
+        json<{ items: PulseItem[]; asOf: string }>("/api/geopolitics").catch(() => null)
       ]);
       
       let items = pulseData.items;
       
-      if (geopoliticsData) {
+      // Validate and clean all items to ensure deltaPct is valid
+      items = items.map(item => ({
+        ...item,
+        deltaPct: isFinite(item.deltaPct) ? item.deltaPct : 0,
+        value: isFinite(item.value) ? item.value : 0
+      }));
+      
+      if (geopoliticsData && geopoliticsData.items && geopoliticsData.items.length > 0) {
         // Add geopolitics item - ensure it's properly structured
-        const geopoliticsItem: PulseItem = {
+        const geopoliticsItem = geopoliticsData.items[0];
+        const geopoliticsPulseItem: PulseItem = {
           key: "geopolitics",
-          label: geopoliticsData.label,
-          deltaPct: geopoliticsData.deltaPct,
-          value: geopoliticsData.value,
-          timePeriod: geopoliticsData.timePeriod
+          label: geopoliticsItem.label,
+          deltaPct: isFinite(geopoliticsItem.deltaPct) ? geopoliticsItem.deltaPct : 0,
+          value: isFinite(geopoliticsItem.value) ? geopoliticsItem.value : 0,
+          timePeriod: geopoliticsItem.timePeriod
         };
-        items = [...items, geopoliticsItem];
+        items = [...items, geopoliticsPulseItem];
       }
       
       return { items, asOf: pulseData.asOf };
@@ -42,10 +50,18 @@ export function PoliticalPulse() {
   if (isLoading) return <div className="h-[220px] flex items-center justify-center text-white/60">Loading…</div>;
   if (error || !data?.items) return <div className="text-white/70">Failed to load Political Pulse.</div>;
 
-  const pill = (d: number) =>
-    <span className={`text-xs ${d >= 0 ? "text-green-400" : "text-red-400"}`}>
-      {d >= 0 ? `+${d}%` : `${d}%`}
-    </span>;
+  const pill = (d: number) => {
+    // Validate that d is a valid number
+    if (!isFinite(d) || isNaN(d)) {
+      return <span className="text-xs text-white/60">N/A</span>;
+    }
+    
+    return (
+      <span className={`text-xs ${d >= 0 ? "text-green-400" : "text-red-400"}`}>
+        {d >= 0 ? `+${d}%` : `${d}%`}
+      </span>
+    );
+  };
 
   const pretty = (k: PulseItem["key"]) =>
     k === "policy" ? "Policy Uncertainty" :
