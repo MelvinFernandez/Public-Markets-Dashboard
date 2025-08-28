@@ -1,0 +1,13 @@
+{
+  "data": {
+    "score": 55,
+    "inputs": {
+      "newsPolarity": 0.1,
+      "sectorBreadth": 0.6,
+      "advDeclRatio": null,
+      "putCallRatio": null
+    },
+    "updatedAt": 1756238967056
+  },
+  "updatedAt": 1756238967056
+}

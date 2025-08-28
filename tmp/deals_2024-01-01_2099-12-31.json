@@ -1,0 +1,31 @@
+{
+  "data": [
+    {
+      "announcedDate": "2025-01-15",
+      "acquirer": "Acquirer A",
+      "target": "Target A",
+      "valueUSD": 2500000000,
+      "offerType": "Cash",
+      "premiumPercent": 18,
+      "sector": "Tech",
+      "status": "Announced",
+      "sources": [
+        "https://example.com"
+      ]
+    },
+    {
+      "announcedDate": "2025-02-20",
+      "acquirer": "Acquirer B",
+      "target": "Target B",
+      "valueUSD": 900000000,
+      "offerType": "Stock",
+      "premiumPercent": 10,
+      "sector": "Health",
+      "status": "Announced",
+      "sources": [
+        "https://example.com"
+      ]
+    }
+  ],
+  "updatedAt": 1756238967056
+}

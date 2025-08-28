@@ -1,0 +1,15 @@
+[
+  {
+    "announcedDate": "2025-05-27",
+    "acquirer": "Acquirer A",
+    "target": "Target A",
+    "valueUSD": 2500000000,
+    "offerType": "Cash",
+    "premiumPercent": 18,
+    "sector": "Tech",
+    "status": "Announced",
+    "sources": [
+      "https://www.example.com"
+    ]
+  }
+]
