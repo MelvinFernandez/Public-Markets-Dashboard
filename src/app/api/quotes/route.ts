@@ -27,7 +27,6 @@ export async function GET(req: Request) {
           volume: quote.regularMarketVolume || 0,
           marketCap: quote.marketCap || 0,
           pe: quote.trailingPE || 0,
-          dividendYield: quote.dividendYield || 0,
           updatedAt: Date.now(),
         };
       } catch (error) {
@@ -40,7 +39,6 @@ export async function GET(req: Request) {
           volume: 0,
           marketCap: 0,
           pe: 0,
-          dividendYield: 0,
           updatedAt: Date.now(),
           error: `Failed to fetch data for ${symbol}`,
         };

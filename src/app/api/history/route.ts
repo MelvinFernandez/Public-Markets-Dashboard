@@ -27,7 +27,7 @@ export async function GET(req: Request) {
     }
 
     // Transform the data to match our expected format
-    const data = result.map((item: any) => ({
+    const data = result.map((item: { date: Date; open?: number; high?: number; low?: number; close?: number; volume?: number }) => ({
       timestamp: Math.floor(new Date(item.date).getTime() / 1000), // Convert to Unix timestamp
       open: item.open || 0,
       high: item.high || 0,

@@ -8,56 +8,16 @@ function keyFor(params: URLSearchParams) {
   return `ohlc:${params.get("ticker")}:${params.get("range")}:${params.get("interval")}`;
 }
 
-// Map range to yahoo-finance2 query options
-function getQueryOptions(range: string, interval: string) {
-  const now = new Date();
-  let period: string;
-  let intervalStr: string;
-  
-  switch (range) {
-    case "1d":
-      period = "1d";
-      intervalStr = interval === "5m" ? "5m" : "1m";
-      break;
-    case "5d":
-      period = "5d";
-      intervalStr = interval === "1h" ? "1h" : "5m";
-      break;
-    case "7d":
-      period = "7d";
-      intervalStr = interval === "1h" ? "1h" : "5m";
-      break;
-    case "1mo":
-      period = "1mo";
-      intervalStr = "1d";
-      break;
-    case "1y":
-      period = "1y";
-      intervalStr = "1wk";
-      break;
-    case "365d":
-      period = "1y";
-      intervalStr = "1d";
-      break;
-    default:
-      period = "1mo";
-      intervalStr = "1d";
-  }
-  
-  return { period, interval: intervalStr };
-}
-
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const ticker = (url.searchParams.get("ticker") || "").trim().toUpperCase();
   const range = (url.searchParams.get("range") || "1mo").toLowerCase();
-  const interval = (url.searchParams.get("interval") || (range === "1d" ? "5m" : "1d")).toLowerCase();
   const force = url.searchParams.get("force") === "true";
   
   if (!ticker) return NextResponse.json({ error: "ticker required" }, { status: 400 });
 
   // Cache: 15s for intraday (1d), 30s for hourly, 60s for daily+ (more aggressive refresh)
-  const ttl = interval.endsWith("m") ? (range === "1d" ? 15_000 : 30_000) : 60_000;
+  const ttl = range === "1d" ? 15_000 : 60_000;
   const cacheKey = keyFor(url.searchParams);
   
   if (!force) {
@@ -71,13 +31,32 @@ export async function GET(req: Request) {
   }
 
   try {
-    const { period, interval: intervalStr } = getQueryOptions(range, interval);
+    console.log(`Fetching ${ticker} data for range: ${range}`);
     
-    console.log(`Fetching ${ticker} data: period=${period}, interval=${intervalStr}`);
+    // Map range to period
+    let period: string;
+    switch (range) {
+      case "1d":
+        period = "1d";
+        break;
+      case "5d":
+      case "7d":
+        period = "7d";
+        break;
+      case "1mo":
+        period = "1mo";
+        break;
+      case "1y":
+      case "365d":
+        period = "1y";
+        break;
+      default:
+        period = "1mo";
+    }
     
     const result = await yahooFinance.historical(ticker, {
       period1: period,
-      interval: intervalStr as any,
+      interval: "1d",
     });
 
     if (!result || result.length === 0) {
@@ -85,7 +64,7 @@ export async function GET(req: Request) {
     }
 
     // Transform the data to match our expected format
-    const data = result.map((item: any) => ({
+    const data = result.map((item: { date: Date; open?: number; high?: number; low?: number; close?: number; volume?: number }) => ({
       t: Math.floor(new Date(item.date).getTime() / 1000), // Convert to Unix timestamp
       o: item.open || 0,
       h: item.high || 0,
