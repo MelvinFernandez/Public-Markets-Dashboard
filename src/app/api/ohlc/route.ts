@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { spawn } from "node:child_process";
+import yahooFinance from "yahoo-finance2";
 import { LruCache, devFileCache } from "@/lib/cache";
 
 const cache = new LruCache<{ data: Array<{ t: number; o: number; h: number; l: number; c: number; v: number }>; updatedAt: number; marketClosed: boolean }>(100);
@@ -8,16 +8,43 @@ function keyFor(params: URLSearchParams) {
   return `ohlc:${params.get("ticker")}:${params.get("range")}:${params.get("interval")}`;
 }
 
-async function trySpawn(cmd: string, args: string[], cwd: string) {
-  return await new Promise<{ ok: boolean; out: string; err: string; code: number }>((resolve) => {
-    const p = spawn(cmd, args, { cwd });
-    let out = "";
-    let err = "";
-    p.stdout.on("data", (d) => (out += d.toString()));
-    p.stderr.on("data", (d) => (err += d.toString()));
-    p.on("close", (code) => resolve({ ok: code === 0, out, err, code: code ?? -1 }));
-    p.on("error", (e) => resolve({ ok: false, out: "", err: String(e), code: -1 }));
-  });
+// Map range to yahoo-finance2 query options
+function getQueryOptions(range: string, interval: string) {
+  const now = new Date();
+  let period: string;
+  let intervalStr: string;
+  
+  switch (range) {
+    case "1d":
+      period = "1d";
+      intervalStr = interval === "5m" ? "5m" : "1m";
+      break;
+    case "5d":
+      period = "5d";
+      intervalStr = interval === "1h" ? "1h" : "5m";
+      break;
+    case "7d":
+      period = "7d";
+      intervalStr = interval === "1h" ? "1h" : "5m";
+      break;
+    case "1mo":
+      period = "1mo";
+      intervalStr = "1d";
+      break;
+    case "1y":
+      period = "1y";
+      intervalStr = "1wk";
+      break;
+    case "365d":
+      period = "1y";
+      intervalStr = "1d";
+      break;
+    default:
+      period = "1mo";
+      intervalStr = "1d";
+  }
+  
+  return { period, interval: intervalStr };
 }
 
 export async function GET(req: Request) {
@@ -26,6 +53,7 @@ export async function GET(req: Request) {
   const range = (url.searchParams.get("range") || "1mo").toLowerCase();
   const interval = (url.searchParams.get("interval") || (range === "1d" ? "5m" : "1d")).toLowerCase();
   const force = url.searchParams.get("force") === "true";
+  
   if (!ticker) return NextResponse.json({ error: "ticker required" }, { status: 400 });
 
   // Cache: 15s for intraday (1d), 30s for hourly, 60s for daily+ (more aggressive refresh)
@@ -42,40 +70,42 @@ export async function GET(req: Request) {
     }
   }
 
-  // Map range->days for our Python script
-  const days = range === "1d" ? 1 : range === "1w" ? 7 : range === "1mo" ? 30 : 365;
+  try {
+    const { period, interval: intervalStr } = getQueryOptions(range, interval);
+    
+    console.log(`Fetching ${ticker} data: period=${period}, interval=${intervalStr}`);
+    
+    const result = await yahooFinance.historical(ticker, {
+      period1: period,
+      interval: intervalStr as any,
+    });
 
-  const cwd = process.cwd();
-  const candidates: Array<{ cmd: string; extraArgs: string[] }> = (
-    [
-      process.env.PYTHON_PATH ? { cmd: process.env.PYTHON_PATH, extraArgs: [] } : undefined,
-      process.platform === 'win32' ? { cmd: 'py', extraArgs: ['-3'] } : undefined,
-      process.platform === 'win32' ? { cmd: 'py', extraArgs: [] } : undefined,
-      { cmd: 'python3', extraArgs: [] },
-      { cmd: 'python', extraArgs: [] },
-    ].filter(Boolean) as Array<{ cmd: string; extraArgs: string[] }>
-  );
-
-  let lastErr = "";
-  for (const c of candidates) {
-    const run = await trySpawn(c.cmd, [...c.extraArgs, "scripts/yfinance_history.py", ticker, String(days)], cwd);
-    if (run.ok) {
-      try {
-        const arr = JSON.parse(run.out);
-        const data = Array.isArray(arr) ? arr.map((d: { timestamp: number; open: number; high: number; low: number; close: number; volume: number }) => ({ t: d.timestamp, o: d.open, h: d.high, l: d.low, c: d.close, v: d.volume })) : [];
-        const payload = { data, updatedAt: Date.now(), marketClosed: false };
-        cache.set(cacheKey, payload, ttl);
-        devFileCache.write(cacheKey, payload);
-        return NextResponse.json(payload);
-      } catch {
-        lastErr = `Invalid JSON from yfinance history (${c.cmd}). stdout: ${run.out?.slice(0, 2000)}`;
-        break;
-      }
+    if (!result || result.length === 0) {
+      throw new Error("No data returned from Yahoo Finance");
     }
-    lastErr = `${c.cmd} failed (code ${run.code}). stderr: ${run.err?.slice(0, 2000)}`;
-  }
 
-  return NextResponse.json({ error: lastErr || "Failed to execute yfinance" }, { status: 500 });
+    // Transform the data to match our expected format
+    const data = result.map((item: any) => ({
+      t: Math.floor(new Date(item.date).getTime() / 1000), // Convert to Unix timestamp
+      o: item.open || 0,
+      h: item.high || 0,
+      l: item.low || 0,
+      c: item.close || 0,
+      v: item.volume || 0,
+    }));
+
+    const payload = { data, updatedAt: Date.now(), marketClosed: false };
+    cache.set(cacheKey, payload, ttl);
+    devFileCache.write(cacheKey, payload);
+    
+    return NextResponse.json(payload);
+    
+  } catch (error) {
+    console.error("Yahoo Finance API error:", error);
+    return NextResponse.json({ 
+      error: `Failed to fetch data from Yahoo Finance: ${error instanceof Error ? error.message : 'Unknown error'}` 
+    }, { status: 500 });
+  }
 }
 
 
