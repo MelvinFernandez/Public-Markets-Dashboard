@@ -3,16 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Home, ChevronLeft } from "lucide-react";
+import { Calendar, FileSearch, LineChart, Building2, Home, ChevronLeft } from "lucide-react";
 import Image from "next/image";
 
 const items = [
   { href: "/", label: "Home", icon: Home },
-  // { href: "/earnings", label: "Earnings", icon: Home },
-  // { href: "/insiders", label: "Insiders", icon: Home },
-  // { href: "/deals", label: "Deals", icon: Home },
-  // { href: "/sectors", label: "Sectors", icon: Home },
-  // { href: "/policy", label: "Policy", icon: Home },
+  { href: "/earnings", label: "Earnings", icon: Calendar },
+  { href: "/insiders", label: "Insiders", icon: FileSearch },
+  { href: "/deals", label: "Deals", icon: Building2 },
+  { href: "/sectors", label: "Sectors", icon: LineChart },
+  { href: "/policy", label: "Policy", icon: Building2 },
 ];
 
 export function Sidebar() {

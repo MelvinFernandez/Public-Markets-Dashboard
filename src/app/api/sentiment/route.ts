@@ -10,10 +10,10 @@ async function trySpawn(cmd: string, args: string[], cwd: string) {
     const p = spawn(cmd, args, { cwd });
     let out = "";
     let err = "";
-    p.stdout.on("data", (d: Buffer) => (out += d.toString()));
-    p.stderr.on("data", (d: Buffer) => (err += d.toString()));
-    p.on("close", (code: number | null) => resolve({ ok: code === 0, out, err, code: code ?? -1 }));
-    p.on("error", (e: Error) => resolve({ ok: false, out: "", err: String(e), code: -1 }));
+    p.stdout.on("data", (d: any) => (out += d.toString()));
+    p.stderr.on("data", (d: any) => (err += d.toString()));
+    p.on("close", (code: any) => resolve({ ok: code === 0, out, err, code: code ?? -1 }));
+    p.on("error", (e: any) => resolve({ ok: false, out: "", err: String(e), code: -1 }));
   });
 }
 
@@ -50,10 +50,15 @@ export async function GET(request: Request) {
     );
 
     let lastErr = "";
+    let lastStdout = "";
+    let lastStderr = "";
+    
     for (const c of candidates) {
       const args = tickers 
         ? [...c.extraArgs, "scripts/sentiment_analysis.py", "--multi", tickers, String(limit)]
         : [...c.extraArgs, "scripts/sentiment_analysis.py", ticker!, String(limit)];
+      
+      console.log(`Trying command: ${c.cmd} ${args.join(' ')}`);
       
       const run = await trySpawn(c.cmd, args, cwd);
       if (run.ok) {
@@ -61,13 +66,26 @@ export async function GET(request: Request) {
           const result = JSON.parse(run.out);
           sentimentCache.set(cacheKey, result, TEN_MINUTES);
           return NextResponse.json(result);
-        } catch {
+        } catch (parseError) {
           lastErr = `Invalid JSON from sentiment analysis (${c.cmd}). stdout: ${run.out?.slice(0, 2000)}`;
+          lastStdout = run.out;
+          lastStderr = run.err;
+          console.error(`JSON parse error for ${c.cmd}:`, parseError);
+          console.error(`stdout:`, run.out);
+          console.error(`stderr:`, run.err);
           break;
         }
       }
       lastErr = `${c.cmd} failed (code ${run.code}). stderr: ${run.err?.slice(0, 2000)}`;
+      lastStdout = run.out;
+      lastStderr = run.err;
+      console.error(`Command ${c.cmd} failed:`, { code: run.code, stdout: run.out, stderr: run.err });
     }
+
+    // Log the complete error for debugging
+    console.error("All Python commands failed. Last error:", lastErr);
+    console.error("Last stdout:", lastStdout);
+    console.error("Last stderr:", lastStderr);
 
     // Return fallback data on error
     if (tickers) {

@@ -7,7 +7,8 @@ import {
   NewsItem,
   scoreTags,
   getTopTags,
-  generateWhyClause
+  generateWhyClause,
+  INDEX_NAMES
 } from './helpers';
 
 // Thresholds for different asset types
@@ -290,11 +291,14 @@ export async function generateBigPicture(): Promise<BigPictureResult> {
   // Size factor analysis
   if (Math.abs(results.factors.mega_vs_equal) >= 0.3 || Math.abs(results.factors.small_vs_spx) >= 0.3) {
     if (rutData && spxData) {
-      const rutLabel = label('^RUT', rutData.pct, 'index');
-      const spxLabel = label('^GSPC', spxData.pct, 'index');
+      const rutPct = pct(rutData.last, rutData.prev);
+      const spxPct = pct(spxData.last, spxData.prev);
+      
+      const rutToken = token('INDEX', '^RUT', 'Russell 2000', rutPct);
+      const spxToken = token('INDEX', '^GSPC', 'S&P 500', spxPct);
       
       const leadership = results.factors.mega_vs_equal > 0 ? 'mega-caps' : 'equal-weight/SMID';
-      factorParagraphs.push(`Leadership tilts toward ${leadership}; ${rutLabel} vs ${spxLabel}.`);
+      factorParagraphs.push(`Leadership tilts toward ${leadership}; ${rutToken} vs ${spxToken}.`);
     }
   }
 
@@ -311,13 +315,15 @@ export async function generateBigPicture(): Promise<BigPictureResult> {
       const topEurope = europeIndices.reduce((prev, current) => Math.abs(current.pct) > Math.abs(prev.pct) ? current : prev);
       const europeSymbol = topEurope === results.tickers['^STOXX50E'] ? '^STOXX50E' :
                           topEurope === results.tickers['^FTSE'] ? '^FTSE' : '^GDAXI';
-      const europeLabel = label(europeSymbol, topEurope.pct, 'index');
-      factorParagraphs.push(`Overseas, ${europeLabel}`);
+      const europePct = pct(topEurope.last, topEurope.prev);
+      const europeToken = token('INDEX', europeSymbol, INDEX_NAMES[europeSymbol] || europeSymbol, europePct);
+      factorParagraphs.push(`Overseas, ${europeToken}`);
     } else if (asiaIndices.length > 0) {
       const topAsia = asiaIndices.reduce((prev, current) => Math.abs(current.pct) > Math.abs(prev.pct) ? current : prev);
       const asiaSymbol = topAsia === results.tickers['^N225'] ? '^N225' : '^HSI';
-      const asiaLabel = label(asiaSymbol, topAsia.pct, 'index');
-      factorParagraphs.push(`Overseas, ${asiaLabel}`);
+      const asiaPct = pct(topAsia.last, topAsia.prev);
+      const asiaToken = token('INDEX', asiaSymbol, INDEX_NAMES[asiaSymbol] || asiaSymbol, asiaPct);
+      factorParagraphs.push(`Overseas, ${asiaToken}`);
     }
   }
 

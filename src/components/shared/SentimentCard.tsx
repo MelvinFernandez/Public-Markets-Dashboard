@@ -307,30 +307,30 @@ export function SentimentCard({ ticker, watchlist = [], className = "" }: Sentim
 
       {/* Sentiment Score */}
       <div className="flex items-center justify-center mb-4">
-        <div className="relative w-20 h-20">
-          <svg className="w-20 h-20 transform -rotate-90" viewBox="0 0 100 100">
+        <div className="relative w-20 h-16">
+          <svg className="w-20 h-16 transform -rotate-90" viewBox="0 0 100 80">
             <circle
               cx="50"
-              cy="50"
-              r="45"
+              cy="40"
+              r="35"
               fill="none"
               stroke="rgba(255,255,255,0.1)"
               strokeWidth="6"
             />
             <circle
               cx="50"
-              cy="50"
-              r="45"
+              cy="40"
+              r="35"
               fill="none"
               stroke="currentColor"
               strokeWidth="6"
               strokeLinecap="round"
               className={getSentimentColor(currentScore)}
-              strokeDasharray={`${(currentScore / 100) * 283} 283`}
+              strokeDasharray={`${(currentScore / 100) * 220} 220`}
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className={`text-lg font-bold ${getSentimentColor(currentScore)}`}>
+            <span className={`text-base font-bold ${getSentimentColor(currentScore)}`}>
               {currentScore}
             </span>
           </div>
@@ -393,31 +393,20 @@ export function SentimentCard({ ticker, watchlist = [], className = "" }: Sentim
       {/* Articles - Only show in individual view */}
       {viewMode === 'individual' && articlesToShow && articlesToShow.length > 0 ? (
         <div className="space-y-2">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-xs text-white/60">Recent Headlines</div>
-            <div className="text-xs text-white/40">
-              {showAllArticles ? articlesToShow.length : Math.min(4, articlesToShow.length)} of {articlesToShow.length}
-            </div>
-          </div>
+          <div className="text-xs text-white/60 mb-2">Recent Headlines</div>
 
           {/* Articles list with expand/collapse */}
           <div className="space-y-2">
             {articlesToShow.slice(0, showAllArticles ? articlesToShow.length : 4).map((article, index) => {
               const badge = getSentimentBadge(article.compound);
-              const isExpanded = showAllArticles && index >= 4;
               return (
                 <div
                   key={`${article.time}-${index}`}
-                  className={`group cursor-pointer transition-all duration-300 ease-in-out ${
-                    isExpanded ? 'animate-slideInUp' : ''
-                  }`}
+                  className="group cursor-pointer transition-all duration-200 ease-in-out"
                   onClick={() => window.open(article.url, '_blank')}
                   style={{
-                    animationDelay: isExpanded ? `${(index - 4) * 100}ms` : '0ms',
-                    opacity: isExpanded ? 0 : 1,
-                    animation: isExpanded ? 'slideInUp 0.4s ease-out forwards' : 'none',
-                    transform: isExpanded ? 'translateY(10px)' : 'translateY(0)',
-                    transition: 'opacity 0.3s ease-in-out, transform 0.3s ease-in-out'
+                    animationDelay: showAllArticles ? `${index * 50}ms` : `${index * 100}ms`,
+                    animation: showAllArticles ? 'slideInUp 0.3s ease-out forwards' : 'none'
                   }}
                 >
                   <div className="flex items-start gap-2 p-2 rounded-md hover:bg-white/5 transition-colors">
@@ -443,14 +432,23 @@ export function SentimentCard({ ticker, watchlist = [], className = "" }: Sentim
             <div className="pt-2 border-t border-white/10 mt-3">
               <button
                 onClick={() => setShowAllArticles(!showAllArticles)}
-                className="w-full text-center text-xs text-green-400 hover:text-green-300 transition-all duration-300 py-2 flex items-center justify-center gap-2 hover:bg-white/5 rounded-md"
+                className="w-full text-center text-xs text-green-400 hover:text-green-300 transition-colors py-2 flex items-center justify-center gap-2"
               >
-                <span
-                  className={`transform transition-transform duration-300 ${showAllArticles ? 'rotate-180' : 'rotate-0'}`}
-                >
-                  ▼
-                </span>
-                {showAllArticles ? 'Show Less' : `See ${articlesToShow.length - 4} More Articles`}
+                {showAllArticles ? (
+                  <>
+                    <span className="transform transition-transform duration-200 rotate-180">
+                      ▼
+                    </span>
+                    Minimize
+                  </>
+                ) : (
+                  <>
+                    <span className="transform transition-transform duration-200 rotate-0">
+                      ▼
+                    </span>
+                    See All Articles ({articlesToShow.length})
+                  </>
+                )}
               </button>
             </div>
           )}
