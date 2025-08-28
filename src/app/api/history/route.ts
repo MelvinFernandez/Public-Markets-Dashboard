@@ -6,10 +6,10 @@ async function trySpawn(cmd: string, args: string[], cwd: string) {
     const p = spawn(cmd, args, { cwd });
     let out = "";
     let err = "";
-    p.stdout.on("data", (d: any) => (out += d.toString()));
-    p.stderr.on("data", (d: any) => (err += d.toString()));
-    p.on("close", (code: any) => resolve({ ok: code === 0, out, err, code: code ?? -1 }));
-    p.on("error", (e: any) => resolve({ ok: false, out: "", err: String(e), code: -1 }));
+    p.stdout.on("data", (d: Buffer) => (out += d.toString()));
+    p.stderr.on("data", (d: Buffer) => (err += d.toString()));
+    p.on("close", (code: number | null) => resolve({ ok: code === 0, out, err, code: code ?? -1 }));
+    p.on("error", (e: Error) => resolve({ ok: false, out: "", err: String(e), code: -1 }));
   });
 }
 
